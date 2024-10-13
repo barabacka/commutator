@@ -1,5 +1,4 @@
-#include <stdio.h>
-#include "bootloader.h"
+#include "common.h"
 
 static int check_arguments ( int argc, char** argv )
 {
@@ -25,9 +24,9 @@ static int check_arguments ( int argc, char** argv )
     
     if ( retval <= 0 )
     {
-        printf ("Wrong argument! (%d)\n", retval );
-        printf ("Usage: \n");
-        printf ("\t ./flasher \"/dev/uart\" \"FILE_TO_FLASH.bin\"\n");
+        msg ("Wrong argument! (%d)\n", retval );
+        msg ("Usage: \n");
+        msg ("\t ./flasher \"/dev/uart\" \"FILE_TO_FLASH.bin\"\n");
         retval = 0;
     }
 
@@ -36,6 +35,7 @@ static int check_arguments ( int argc, char** argv )
 //-----------------------------------------------
 int main ( int argc, char** argv )
 {
+    msg ( "Commutator: Raspberry PI onboard STM32 flasher by Barabaka. 2024\n" );
     if ( !check_arguments ( argc, argv ) )
         return 1;
     boot_start ( argv[1] );

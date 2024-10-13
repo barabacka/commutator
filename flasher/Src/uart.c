@@ -1,11 +1,12 @@
-#include <stdio.h>
-#include <assert.h>
+#include <unistd.h>
 #include <errno.h>
 #include <fcntl.h> 
-#include <string.h>
 #include <termios.h>
-#include <unistd.h>
+#include "common.h"
 #include "uart.h"
+#include <string.h>
+
+
 
 /*
 *   based on:   https://stackoverflow.com/questions/6947413/how-to-open-read-and-write-from-serial-port-in-c
@@ -20,7 +21,7 @@
 static int uart = -1;
 
 //-----------------------------------------------
-static int get_port_attribs ( struct termios * tty )
+static int get_uart_attribs ( struct termios * tty )
 {
     assert ( tty );
     int retval = 0;
@@ -32,7 +33,7 @@ static int get_port_attribs ( struct termios * tty )
             break;
         
         if ( tcgetattr ( uart, tty ) != 0 ){
-            printf ( "error %d from tcgetattr", errno );
+            msg ( "error %d from tcgetattr", errno );
             break;
         } 
 
@@ -42,17 +43,50 @@ static int get_port_attribs ( struct termios * tty )
     return retval;
 }
 //-----------------------------------------------
-static int set_port_attribs ( int speed, int parity )
+static int set_uart_attribs ( int speed, int parity )
 {
-    struct termios tty;
-    int retval = 0;
-
+    struct  termios tty;
+    int     retval = 0;
+    speed_t bspeed;
     do{
-        if ( !get_port_attribs ( &tty ) )
+        if ( !get_uart_attribs ( &tty ) )
             break;
+
+        switch ( speed ){
+            case 1200:  
+                bspeed = B1200; 
+                break;
+            case 2400:  
+                bspeed = B2400; 
+                break;
+            case 4800:  
+                bspeed = B4800; 
+                break;
+            case 9600:  
+                bspeed = B9600; 
+                break;
+            case 19200:  
+                bspeed = B19200; 
+                break;
+            case 38400:  
+                bspeed = B38400; 
+                break;
+            case 57600:  
+                bspeed = B57600; 
+                break;
+            case 115200:  
+                bspeed = B115200; 
+                break;
+            case 230400:  
+                bspeed = B230400; 
+                break;
+            default:
+                assert ( 0 );
+                break;
+        }
         
-        cfsetospeed ( &tty, speed );
-        cfsetispeed ( &tty, speed );
+        cfsetospeed ( &tty, bspeed );
+        cfsetispeed ( &tty, bspeed );
 
         tty.c_cflag = ( tty.c_cflag & ~CSIZE ) | CS8;     // 8-bit chars
         // disable IGNBRK for mismatched speed tests; otherwise receive break
@@ -74,7 +108,7 @@ static int set_port_attribs ( int speed, int parity )
         tty.c_cflag &= ~CRTSCTS;    
     
         if ( tcsetattr ( uart, TCSANOW, &tty ) != 0 ){
-            printf ( "error %d from tcsetattr", errno );
+            msg ( "error %d from tcsetattr", errno );
             break;
         }
 
@@ -84,24 +118,24 @@ static int set_port_attribs ( int speed, int parity )
     return retval;
 }
 //-----------------------------------------------
-void set_port_blocking ( int should_block )
+void set_uart_blocking ( int should_block )
 {
     struct termios tty;
     
     do{
-        if ( !get_port_attribs ( &tty ) )
+        if ( !get_uart_attribs ( &tty ) )
             break;
 
         tty.c_cc[VMIN]  = should_block ? 1 : 0;
         tty.c_cc[VTIME] = 5;            // 0.5 seconds read timeout
 
         if ( tcsetattr (uart, TCSANOW, &tty ) != 0 )
-            printf ( "error %d setting term attributes", errno );
+            msg ( "error %d setting term attributes", errno );
     }
     while ( 0 );
 }
 //-----------------------------------------------
-void close_port ( )
+void close_uart ( )
 {
     if ( uart >= 0 )
     {
@@ -110,7 +144,7 @@ void close_port ( )
     }
 }
 //-----------------------------------------------
-size_t tx_port ( unsigned char * data, size_t size )
+size_t tx_uart ( uint8_t * data, size_t size )
 {
     assert ( data );
     size_t retval = 0;
@@ -121,12 +155,12 @@ size_t tx_port ( unsigned char * data, size_t size )
     return 0;
 }
 //-----------------------------------------------
-int tx_byte ( unsigned char data )
+int tx_byte ( uint8_t data )
 {
-    return ( int ) tx_port ( &data, 1 );
+    return ( int ) tx_uart ( &data, 1 );
 }
 //-----------------------------------------------
-size_t rx_port ( unsigned char * data, size_t size )
+size_t rx_uart ( uint8_t * data, size_t size )
 {
     assert ( data );
     size_t retval = 0;
@@ -136,40 +170,40 @@ size_t rx_port ( unsigned char * data, size_t size )
     return 0;
 }
 //-----------------------------------------------
-int rx_byte ( unsigned char * data )
+int rx_byte ( uint8_t * data )
 {
     assert ( data );
-    return ( int ) rx_port ( data, 1 );
+    return ( int ) rx_uart ( data, 1 );
 }
 //-----------------------------------------------
 //-----------------------------------------------
 //-----------------------------------------------
-int open_port ( char * port, int speed )
+int open_uart ( char * port, int speed )
 {
-    assert ( port );
+    assert ( uart );
     int retval = 0;
 
     do
     {
-        close_port ();
+        close_uart ();
         
         uart = open ( port, O_RDWR | O_NOCTTY | O_SYNC );
         if ( uart < 0 ){
-            printf ("error %d opening %s: %s", errno, port, strerror (errno));
+            msg ("error %d opening %s: %s", errno, port, strerror (errno));
             break;
         }
 
-        if ( !set_port_attribs ( speed, PARENB ) )
+        if ( !set_uart_attribs ( speed, PARENB ) )
             break;
         
-        set_port_blocking ( 0 );
+        set_uart_blocking ( 0 );
 
         retval = 1;
 
     }while ( 0 );
 
     if ( !retval )
-        close_port ();
+        close_uart ();
     
     return retval;
 }
