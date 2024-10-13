@@ -1,4 +1,5 @@
 #include "common.h"
+#include "ver.h"
 
 static int check_arguments ( int argc, char** argv )
 {
@@ -35,7 +36,7 @@ static int check_arguments ( int argc, char** argv )
 //-----------------------------------------------
 int main ( int argc, char** argv )
 {
-    msg ( "Commutator: Raspberry PI onboard STM32 flasher by Barabaka. 2024\n" );
+    msg ( "Commutator: Raspberry PI onboard STM32 flasher by Barabaka v%s - 2024\n", ver );
     if ( !check_arguments ( argc, argv ) )
         return 1;
     boot_start ( argv[1] );
