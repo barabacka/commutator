@@ -33,22 +33,19 @@ __attribute__ ( ( __always_inline__) ) void delay ( useconds_t usec )
         usleep ( usec );
 }
 //-----------------------------------------------
- uint8_t summ ( uint8_t * buff, int len )
+static uint8_t get_ack ( useconds_t wait_us )
 {
-    uint8_t sum = BOOT_CMD_CHKSUMM;
+    uint8_t c;
 
-    while ( len-- )
-        sum ^= *buff++;
-        
-    return sum;
+    delay ( wait_us ); 
+    if ( !rx_byte ( &c ) )
+        c = 0;    
+    return c; 
 }
 //-----------------------------------------------
 static int ack ( useconds_t wait_us )
 {
-    uint8_t c;
-
-    delay ( wait_us );     
-    return ( rx_byte ( &c ) == 1 && c == BOOT_CMD_ACK ) ? 1 : 0; 
+    return get_ack ( wait_us ) == BOOT_CMD_ACK ? 1 : 0; 
 }
 //-----------------------------------------------
 static void flush_rx ( useconds_t wait_us )
@@ -87,18 +84,50 @@ static int cmd_answer ( uint8_t * buff, int buff_size, useconds_t wait_us )
 
 }
 //-----------------------------------------------
+static int send_n ( uint8_t * data, int size, uint8_t crc )
+{
+    int retval = 0;
+    
+    assert ( data );
+
+    while ( size-- ){
+        if ( ! tx_byte ( *data ) ){
+            retval = 0;
+            break;
+        }            
+        crc ^= *data;
+        data++;
+        retval++;
+    }
+    if ( retval )
+        if ( !tx_byte ( crc ) )
+                retval = 0; 
+
+    return retval;
+}
+//-----------------------------------------------
 static int send_cmd ( uint8_t cmd )
 {
     assert ( cmd < BOOT_CMD_IDX_MAX );
     int retval = 0;
 
     if ( cmd_set[cmd].allow == CMD_ALLOWED )
-    { 
-        tx_buff[0] = cmd_set[cmd].cmd;
-        tx_buff[1] = summ ( tx_buff, 1 );
-        retval = tx_uart ( tx_buff, 2 ) == 2 ? 1 : 0;
-    }
+        retval = send_n ( &cmd_set[cmd].cmd, 1, BOOT_CMD_CHKSUMM );
+
     return  retval;
+}
+
+//-----------------------------------------------
+static int send_addr ( uint32_t addr )
+{
+    int i;
+
+    for ( i = 3; i >=0; i-- ){
+        tx_buff[i] = addr & 0xFF;
+        addr >>= 8;
+    }
+
+    return send_n ( tx_buff, 4, 0 ) == 4 ? 1 : 0;
 }
 //-----------------------------------------------
 //-----------------------------------------------
@@ -114,7 +143,6 @@ static int boot_get ( )
         
         len = cmd_answer ( rx_buff, BUFF_SIZE, BOOT_RX_DELAY );
 #ifdef DEBUG        
-        hex ( tx_buff, 2 );
         hex ( rx_buff, len );
 #endif
         if ( len < 3 || 
@@ -151,7 +179,6 @@ static int boot_get_version ( )
         
         len = cmd_answer ( rx_buff, BUFF_SIZE, BOOT_RX_DELAY );
 #ifdef DEBUG        
-        hex ( tx_buff, 2 );
         hex ( rx_buff, len );
 #endif
         if ( len  )
@@ -172,7 +199,6 @@ static int boot_get_id ( )
         
         len = cmd_answer ( rx_buff, BUFF_SIZE, BOOT_RX_DELAY );
 #ifdef DEBUG        
-        hex ( tx_buff, 2 );
         hex ( rx_buff, len );
 #endif
         if ( len != 3 || 
@@ -182,6 +208,39 @@ static int boot_get_id ( )
 
         retval = rx_buff[2];
 
+    } while ( 0 );
+    
+    return retval;
+}
+//-----------------------------------------------
+static int boot_read ( uint32_t addr, uint8_t * data, uint8_t size )
+{
+#define BOOT_READ_SEND_PART(cond,rv,rm) {   if(!(cond))                         \
+                                                break;                          \
+                                            ans = get_ack ( BOOT_RX_DELAY );    \
+                                            if ( ans != BOOT_CMD_ACK )          \
+                                            {                                   \
+                                                if ( ans == BOOT_CMD_NACK ){    \
+                                                    retval = rv;                \
+                                                    dbg(rm);                    \
+                                                }                               \
+                                                break;                          \
+                                            }                                   \
+                                        }
+
+    int retval = 0;
+    uint8_t ans;
+
+    assert ( data );
+
+    do{
+        if ( !size )
+            break;
+        BOOT_READ_SEND_PART ( send_cmd ( BOOT_CMD_READ_MEMORY_IDX ),    -2, "BOOT_READ_CMD::Fail: RDP is active.\n"   );
+        BOOT_READ_SEND_PART ( send_addr ( addr ),                       -3, "BOOT_READ_CMD::Fail: wrong address.\n"   );
+        BOOT_READ_SEND_PART ( send_n ( &size, 1, BOOT_CMD_CHKSUMM ),    -4, "BOOT_READ_CMD::Fail: wrong data size.\n" );
+        retval = rx_uart ( data, size );
+        hex ( data, retval );
     } while ( 0 );
     
     return retval;
@@ -212,7 +271,9 @@ static int boot_connecting ( )
 
 int boot_start ( char * port )
 {
-    uint8_t chip_id = 0;
+    uint8_t chip_id = 0, test_read[4];
+    int ans;
+ 
     if ( !open_uart (port , BOOT_UART_SPEED ) )
     {
         close_uart();
@@ -234,6 +295,7 @@ int boot_start ( char * port )
     msg ( "\tDetected STM32 chip with ID 0x%.2X.\n", chip_id );
     msg ( "\tBootloader v%d.%d\n", boot_version >> 4, boot_version & 0xf );
     
+    ans = boot_read ( BOOT_TEST_READ_ADDR, test_read, 4 );
     close_uart();
     return 1;
 }
