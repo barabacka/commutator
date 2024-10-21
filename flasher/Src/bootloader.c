@@ -1,8 +1,21 @@
 #include "common.h"
+#include "bootloader_def.h"
 #include "bootloader_opt.h"
 #include "uart.h"
 
 //#define _BSD_SOURCE
+
+#define SEND_CMD(c)             if ( ( retval = send_cmd ( c ) ) != OK ) break;
+#define CMD_ANSWER(c,s,d)       if ( ( retval = cmd_answer ( c,s,d ) ) < OK ) break;
+#define CHECK_ANSWER(rv,rm) {   retval = get_ack ( BOOT_RX_DELAY ); \
+                                if ( retval != BOOT_CMD_ACK ){      \
+                                    if ( retval == BOOT_CMD_NACK ){ \
+                                        retval = rv;                \
+                                        dbg(rm);                    \
+                                    }                               \
+                                    break;                          \
+                                    }                                   \
+                                }
 
 static BOOT_CMD_ALLOW_T cmd_set[BOOT_CMD_IDX_MAX]={
     { CMD_ALLOWED,      BOOT_CMD_GET                },
@@ -35,17 +48,27 @@ __attribute__ ( ( __always_inline__) ) void delay ( useconds_t usec )
 //-----------------------------------------------
 static uint8_t get_ack ( useconds_t wait_us )
 {
-    uint8_t c;
+    uint8_t retval = ERROR;
 
     delay ( wait_us ); 
-    if ( !rx_byte ( &c ) )
-        c = 0;    
-    return c; 
-}
-//-----------------------------------------------
-static int ack ( useconds_t wait_us )
-{
-    return get_ack ( wait_us ) == BOOT_CMD_ACK ? 1 : 0; 
+    do{
+        if ( !rx_byte ( &retval ) ){
+            retval = ERR_RX_FAIL;
+            break;
+        }
+        switch ( retval ){
+            case BOOT_CMD_ACK:
+                retval = OK;
+                break;
+            case BOOT_CMD_NACK:
+                retval = ERR_NACK;
+                break;
+            default:
+                break;
+        }
+    }while ( 0 );
+    
+    return retval; 
 }
 //-----------------------------------------------
 static void flush_rx ( useconds_t wait_us )
@@ -60,48 +83,50 @@ static void flush_rx ( useconds_t wait_us )
 //-----------------------------------------------
 static int cmd_answer ( uint8_t * buff, int buff_size, useconds_t wait_us )
 {
-    int retval = 0, len = 0;
+    int retval;
     
-    if ( ack ( wait_us ) )
+    retval = get_ack ( wait_us );
+    if ( retval == OK )
     {
         do{
             delay ( wait_us );
-            if ( !rx_byte ( buff ) )
+            if ( !rx_byte ( buff ) ){
+                retval = ERR_RX_FAIL;
                 break;
+            }   
             if ( *buff == BOOT_CMD_ACK )
-            {
-                retval = len;
+                break;
+            retval++;
+            buff++;
+
+            if ( retval >= buff_size ){
+                retval = ERR_OVERFLOW;
                 break;
             }
-            len++;
-            buff++;
-            if ( len >= buff_size )
-                break;
         }
         while ( 1 );    
     }
     return retval;
-
 }
 //-----------------------------------------------
 static int send_n ( uint8_t * data, int size, uint8_t crc )
 {
-    int retval = 0;
+    int retval = ERROR;
     
     assert ( data );
 
     while ( size-- ){
         if ( ! tx_byte ( *data ) ){
-            retval = 0;
+            retval = ERR_TX_FAIL;
             break;
         }            
         crc ^= *data;
         data++;
         retval++;
     }
-    if ( retval )
+    if ( retval > 0 )
         if ( !tx_byte ( crc ) )
-                retval = 0; 
+                retval = ERR_TX_FAIL; 
 
     return retval;
 }
@@ -109,47 +134,50 @@ static int send_n ( uint8_t * data, int size, uint8_t crc )
 static int send_cmd ( uint8_t cmd )
 {
     assert ( cmd < BOOT_CMD_IDX_MAX );
-    int retval = 0;
+    int retval;
 
-    if ( cmd_set[cmd].allow == CMD_ALLOWED )
+    if ( cmd_set[cmd].allow != CMD_ALLOWED )
+        retval = ERR_CMD_NOT_ALLOW;
+    else
         retval = send_n ( &cmd_set[cmd].cmd, 1, BOOT_CMD_CHKSUMM );
 
     return  retval;
 }
-
 //-----------------------------------------------
 static int send_addr ( uint32_t addr )
 {
-    int i;
-
-    for ( i = 3; i >=0; i-- ){
-        tx_buff[i] = addr & 0xFF;
+    uint8_t * ptr = &tx_buff[3];
+    
+    *( uint32_t *)tx_buff = 0;
+    
+    while ( addr ){
+        *ptr = addr & 0xFF;
         addr >>= 8;
+        ptr--;
     }
-
-    return send_n ( tx_buff, 4, 0 ) == 4 ? 1 : 0;
+    return send_n ( tx_buff, 4, 0 );
 }
 //-----------------------------------------------
 //-----------------------------------------------
 //-----------------------------------------------
 static int boot_get ( )
 {
-    int len, retval = 0, cmd_set_idx, ans_cmd_idx;
+    int retval, cmd_set_idx, ans_cmd_idx;
     BOOT_CMD_GET_ANSWER_T * ans = ( BOOT_CMD_GET_ANSWER_T * )rx_buff;
 
     do{
-        if ( !send_cmd ( BOOT_CMD_GET_IDX ) )
-            break;
-        
-        len = cmd_answer ( rx_buff, BUFF_SIZE, BOOT_RX_DELAY );
+        SEND_CMD ( BOOT_CMD_GET_IDX );
+        CMD_ANSWER ( rx_buff, BUFF_SIZE, BOOT_RX_DELAY );
 #ifdef DEBUG        
-        hex ( rx_buff, len );
+        hex ( rx_buff, retval );
 #endif
-        if ( len < 3 || 
+        if ( retval < 3 || 
              !ans->ver || 
-             ans->n != ( len - 2 ) )
+             ans->n != ( retval - 2 ) ){
+            retval =  ERR_UNKNOWN_ANSWER;
             break;
-
+        }
+    
         boot_version = ans->ver;
         //clear cmd set
         for ( cmd_set_idx = ( BOOT_CMD_GET_IDX + 1); cmd_set_idx < BOOT_CMD_IDX_MAX; cmd_set_idx++ )
@@ -171,18 +199,15 @@ static int boot_get ( )
 //-----------------------------------------------
 static int boot_get_version ( )
 {
-    int len, retval = 0;
+    int retval;
 
     do{
-        if ( !send_cmd ( BOOT_CMD_GET_VERSION_IDX ) )
-            break;
-        
-        len = cmd_answer ( rx_buff, BUFF_SIZE, BOOT_RX_DELAY );
+        SEND_CMD ( BOOT_CMD_GET_VERSION_IDX );
+        CMD_ANSWER ( rx_buff, BUFF_SIZE, BOOT_RX_DELAY );
 #ifdef DEBUG        
-        hex ( rx_buff, len );
+        hex ( rx_buff, retval );
 #endif
-        if ( len  )
-            retval = rx_buff[0];
+        retval = rx_buff[0];
 
     } while ( 0 );
     
@@ -191,20 +216,20 @@ static int boot_get_version ( )
 //-----------------------------------------------
 static int boot_get_id ( )
 {
-    int len, retval = 0;
+    int retval;
 
     do{
-        if ( !send_cmd ( BOOT_CMD_GET_ID_IDX ) )
-            break;
-        
-        len = cmd_answer ( rx_buff, BUFF_SIZE, BOOT_RX_DELAY );
+        SEND_CMD ( BOOT_CMD_GET_ID_IDX );
+        CMD_ANSWER ( rx_buff, BUFF_SIZE, BOOT_RX_DELAY ) ;
 #ifdef DEBUG        
-        hex ( rx_buff, len );
+        hex ( rx_buff, retval );
 #endif
-        if ( len != 3 || 
-            rx_buff[0] != 1 ||
-            rx_buff[1] != 4 )
+        if ( retval != 3 || 
+             rx_buff[0] != 1 ||
+             rx_buff[1] != 4 ){
+            retval =  ERR_UNKNOWN_ANSWER;
             break;
+        }
 
         retval = rx_buff[2];
 
@@ -215,20 +240,7 @@ static int boot_get_id ( )
 //-----------------------------------------------
 static int boot_read ( uint32_t addr, uint8_t * data, uint8_t size )
 {
-#define BOOT_READ_SEND_PART(cond,rv,rm) {   if(!(cond))                         \
-                                                break;                          \
-                                            ans = get_ack ( BOOT_RX_DELAY );    \
-                                            if ( ans != BOOT_CMD_ACK )          \
-                                            {                                   \
-                                                if ( ans == BOOT_CMD_NACK ){    \
-                                                    retval = rv;                \
-                                                    dbg(rm);                    \
-                                                }                               \
-                                                break;                          \
-                                            }                                   \
-                                        }
-
-    int retval = 0;
+    int retval = ERR_WRONG_SIZE;
     uint8_t ans;
 
     assert ( data );
@@ -236,9 +248,17 @@ static int boot_read ( uint32_t addr, uint8_t * data, uint8_t size )
     do{
         if ( !size )
             break;
-        BOOT_READ_SEND_PART ( send_cmd ( BOOT_CMD_READ_MEMORY_IDX ),    -2, "BOOT_READ_CMD::Fail: RDP is active.\n"   );
-        BOOT_READ_SEND_PART ( send_addr ( addr ),                       -3, "BOOT_READ_CMD::Fail: wrong address.\n"   );
-        BOOT_READ_SEND_PART ( send_n ( &size, 1, BOOT_CMD_CHKSUMM ),    -4, "BOOT_READ_CMD::Fail: wrong data size.\n" );
+        SEND_CMD ( BOOT_CMD_READ_MEMORY_IDX );
+        CHECK_ANSWER ( ERR_RDP_ACTIVE, "BOOT_READ_CMD::Fail: RDP is active.\n" );
+
+        if ( ( retval = send_addr ( addr ) ) != 4 )
+            break;
+        CHECK_ANSWER ( ERR_WRONG_ADDR, "BOOT_READ_CMD::Fail: wrong address.\n" );
+
+        if ( ( retval = send_n ( &size, 1, BOOT_CMD_CHKSUMM ) ) != 1 )
+            break;
+        CHECK_ANSWER ( ERR_WRONG_SIZE, "BOOT_READ_CMD::Fail: wrong data size.\n" );
+
         retval = rx_uart ( data, size );
         hex ( data, retval );
     } while ( 0 );
@@ -283,7 +303,7 @@ int boot_start ( char * port )
     while ( 1 )
     {
         tx_byte ( BOOT_CMD_HELLO );
-        if ( ack ( 1 ) ){
+        if ( get_ack ( 1 ) == BOOT_CMD_ACK ){
             chip_id = boot_connecting ( );
             if ( chip_id )
                 break;
