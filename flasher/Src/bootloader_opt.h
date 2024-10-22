@@ -1,9 +1,6 @@
 #pragma once
 
-
-#define BOOT_HELLO_TICK             10000
-
-#define BOOT_TEST_READ_ADDR         0x8000000
+#define BOOT_EXT_ERASE_WHOLE        0
 
 #define BOOT_CMD_CHKSUMM            0xFF
 #define BOOT_CMD_ACK                0x79

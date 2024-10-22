@@ -8,14 +8,14 @@
 #define SEND_CMD(c)             if ( ( retval = send_cmd ( c ) ) != OK ) break;
 #define CMD_ANSWER(c,s,d)       if ( ( retval = cmd_answer ( c,s,d ) ) < OK ) break;
 #define CHECK_ANSWER(rv,rm) {   retval = get_ack ( BOOT_RX_DELAY ); \
-                                if ( retval != BOOT_CMD_ACK ){      \
-                                    if ( retval == BOOT_CMD_NACK ){ \
+                                if ( retval != OK ){                \
+                                    if ( retval == ERR_NACK ){      \
                                         retval = rv;                \
                                         dbg(rm);                    \
                                     }                               \
                                     break;                          \
-                                    }                                   \
-                                }
+                                }                                   \
+                            }
 
 static BOOT_CMD_ALLOW_T cmd_set[BOOT_CMD_IDX_MAX]={
     { CMD_ALLOWED,      BOOT_CMD_GET                },
@@ -46,17 +46,16 @@ __attribute__ ( ( __always_inline__) ) void delay ( useconds_t usec )
         usleep ( usec );
 }
 //-----------------------------------------------
-static uint8_t get_ack ( useconds_t wait_us )
+static int get_ack ( useconds_t wait_us )
 {
-    uint8_t retval = ERROR;
+    uint8_t ans;
+    int retval;
 
     delay ( wait_us ); 
-    do{
-        if ( !rx_byte ( &retval ) ){
-            retval = ERR_RX_FAIL;
-            break;
-        }
-        switch ( retval ){
+    if ( !rx_byte ( &ans ) )
+        retval = ERR_RX_FAIL;
+    else
+        switch ( ans ){
             case BOOT_CMD_ACK:
                 retval = OK;
                 break;
@@ -64,9 +63,9 @@ static uint8_t get_ack ( useconds_t wait_us )
                 retval = ERR_NACK;
                 break;
             default:
+                retval = ERR_UNKNOWN_ANSWER;
                 break;
         }
-    }while ( 0 );
     
     return retval; 
 }
@@ -88,6 +87,7 @@ static int cmd_answer ( uint8_t * buff, int buff_size, useconds_t wait_us )
     retval = get_ack ( wait_us );
     if ( retval == OK )
     {
+        retval = 0;
         do{
             delay ( wait_us );
             if ( !rx_byte ( buff ) ){
@@ -96,9 +96,9 @@ static int cmd_answer ( uint8_t * buff, int buff_size, useconds_t wait_us )
             }   
             if ( *buff == BOOT_CMD_ACK )
                 break;
-            retval++;
-            buff++;
 
+            buff++;
+            retval++;
             if ( retval >= buff_size ){
                 retval = ERR_OVERFLOW;
                 break;
@@ -266,6 +266,52 @@ static int boot_read ( uint32_t addr, uint8_t * data, uint8_t size )
     return retval;
 }
 //-----------------------------------------------
+static int boot_erase_ext ( uint16_t pages_num, uint16_t * pages )
+{
+    int retval, cnt = 0, num;
+    uint8_t ans, crc;
+    do{
+        SEND_CMD ( BOOT_CMD_EXTENDED_ERASE_IDX );   //ERR_CMD_NOT_ALLOW
+        CHECK_ANSWER ( ERR_RDP_ACTIVE, "BOOT_EXT_ERASE_CMD::Fail: RDP is active.\n" ); 
+        num = pages_num - 1;
+        tx_buff[cnt++] = num >> 8;
+        tx_buff[cnt++] = num & 0xFF;
+        crc = tx_buff[0] ^ tx_buff[1];
+        if ( ( pages_num >> 4 ) != 0xFFF ){
+            while ( pages_num-- ){
+                tx_buff[cnt] = *pages >> 8;
+                crc ^= tx_buff[cnt++];
+                tx_buff[cnt] = *pages & 0xFF;
+                crc ^= tx_buff[cnt++];
+                pages++;
+            }
+        }
+        else{
+            num = 0x200;    //TODO: max num of pages
+        }
+        
+        tx_buff[cnt++] = crc;
+#ifdef DEBUG        
+        hex ( tx_buff, cnt );
+#endif
+        if ( ( retval = tx_uart ( tx_buff, cnt ) ) != cnt )
+            break;
+
+        do{
+            if ( ( retval = get_ack ( BOOT_ERASE_PAGE_TO ) ) == OK )
+                break;
+            if ( retval == ERR_NACK ){
+                retval = ERR_WRONG_SIZE;
+                break;
+            }
+            retval = ERR_TIMEOUT;
+        } while ( num-- );
+        
+    } while ( 0 );
+    
+    return retval;
+}
+//-----------------------------------------------
 //-----------------------------------------------
 //-----------------------------------------------
 static int boot_connecting ( )
@@ -303,19 +349,20 @@ int boot_start ( char * port )
     while ( 1 )
     {
         tx_byte ( BOOT_CMD_HELLO );
-        if ( get_ack ( 1 ) == BOOT_CMD_ACK ){
+        if ( get_ack ( 1 ) == OK ){
             chip_id = boot_connecting ( );
             if ( chip_id )
                 break;
         }
-        delay ( BOOT_HELLO_TICK ); 
 
+        delay ( BOOT_HELLO_TICK ); 
     }
 
     msg ( "\tDetected STM32 chip with ID 0x%.2X.\n", chip_id );
     msg ( "\tBootloader v%d.%d\n", boot_version >> 4, boot_version & 0xf );
     
     ans = boot_read ( BOOT_TEST_READ_ADDR, test_read, 4 );
+    ans = boot_erase_ext ( BOOT_EXT_ERASE_WHOLE, NULL );
     close_uart();
     return 1;
 }
