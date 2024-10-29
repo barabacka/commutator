@@ -1,6 +1,7 @@
 #pragma once
 
-#define BOOT_EXT_ERASE_WHOLE        0
+#define BOOT_ERASE_WHOLE        0
+#define BOOT_ERASE_PAGES        0x200
 
 #define BOOT_CMD_CHKSUMM            0xFF
 #define BOOT_CMD_ACK                0x79

@@ -63,6 +63,7 @@ static int get_ack ( useconds_t wait_us )
                 retval = ERR_NACK;
                 break;
             default:
+                dbg ( "get_ack::unknown answer: 0x%.2X\n", ans );
                 retval = ERR_UNKNOWN_ANSWER;
                 break;
         }
@@ -116,6 +117,7 @@ static int send_n ( uint8_t * data, int size, uint8_t crc )
     assert ( data );
 
     while ( size-- ){
+        dbg ( "%.2X ", *data );
         if ( ! tx_byte ( *data ) ){
             retval = ERR_TX_FAIL;
             break;
@@ -124,9 +126,11 @@ static int send_n ( uint8_t * data, int size, uint8_t crc )
         data++;
         retval++;
     }
-    if ( retval > 0 )
+    if ( retval > 0 ){
+        dbg ( "%.2X\n", crc );
         if ( !tx_byte ( crc ) )
-                retval = ERR_TX_FAIL; 
+                retval = ERR_TX_FAIL;
+    } 
 
     return retval;
 }
@@ -255,11 +259,12 @@ static int boot_read ( uint32_t addr, uint8_t * data, uint8_t size )
             break;
         CHECK_ANSWER ( ERR_WRONG_ADDR, "BOOT_READ_CMD::Fail: wrong address.\n" );
 
+        size--;
         if ( ( retval = send_n ( &size, 1, BOOT_CMD_CHKSUMM ) ) != 1 )
             break;
         CHECK_ANSWER ( ERR_WRONG_SIZE, "BOOT_READ_CMD::Fail: wrong data size.\n" );
 
-        retval = rx_uart ( data, size );
+        retval = rx_uart ( data, size + 1 );
         hex ( data, retval );
     } while ( 0 );
     
@@ -287,7 +292,7 @@ static int boot_erase_ext ( uint16_t pages_num, uint16_t * pages )
             }
         }
         else{
-            num = 0x200;    //TODO: max num of pages
+            num = BOOT_ERASE_PAGES;    //TODO: max num of pages
         }
         
         tx_buff[cnt++] = crc;
@@ -312,9 +317,28 @@ static int boot_erase_ext ( uint16_t pages_num, uint16_t * pages )
     return retval;
 }
 //-----------------------------------------------
+static int bl_erase_flash ( )
+{
+    int retval = ERROR, i;
+    uint16_t * pages = NULL;
+    do{
+        if ( cmd_set[BOOT_CMD_EXTENDED_ERASE_IDX].allow == CMD_ALLOWED ){
+            retval = boot_erase_ext ( BOOT_ERASE_WHOLE, NULL );
+            if ( retval == OK )
+                break;
+            pages = ( uint16_t * ) malloc ( BOOT_ERASE_PAGES * 2 );
+            for ( i=0; i < BOOT_ERASE_PAGES; i++ )
+                pages[i] = i;
+            retval = boot_erase_ext ( BOOT_ERASE_PAGES, pages );
+            free ( pages );
+        }
+    }while ( 0 );
+
+    return retval;
+}
 //-----------------------------------------------
 //-----------------------------------------------
-static int boot_connecting ( )
+static int bl_connecting ( )
 {
     int retval = 0;
     uint8_t chip_id = 0;
@@ -334,35 +358,36 @@ static int boot_connecting ( )
     return retval;
 }
 //-----------------------------------------------
-
-int boot_start ( char * port )
+//-----------------------------------------------
+//-----------------------------------------------
+int bl_open_uart ( char * port )
+{
+    if ( !open_uart ( port, BOOT_UART_SPEED ) )
+        return ERR_OPEN_UART;
+    return OK;
+}
+//-----------------------------------------------
+void bl_close_uart ( void )
+{
+    close_uart ( );
+}
+//-----------------------------------------------
+int bl_connect ( void )
 {
     uint8_t chip_id = 0, test_read[4];
     int ans;
  
-    if ( !open_uart (port , BOOT_UART_SPEED ) )
-    {
-        close_uart();
-        return 0;
-    }
-    msg("\tWaiting for connection...\n");
-    while ( 1 )
-    {
-        tx_byte ( BOOT_CMD_HELLO );
-        if ( get_ack ( 1 ) == OK ){
-            chip_id = boot_connecting ( );
-            if ( chip_id )
-                break;
-        }
+    tx_byte ( BOOT_CMD_HELLO );
+    if ( get_ack ( 1 ) == OK ){
+        chip_id = bl_connecting ( );
+        if ( chip_id ){
+            msg ( "\tDetected STM32 chip with ID 0x%.2X.\n", chip_id );
+            msg ( "\tBootloader v%d.%d\n", boot_version >> 4, boot_version & 0xf );
 
-        delay ( BOOT_HELLO_TICK ); 
+            return OK;
+        }    
     }
+    delay ( BOOT_HELLO_TICK );
 
-    msg ( "\tDetected STM32 chip with ID 0x%.2X.\n", chip_id );
-    msg ( "\tBootloader v%d.%d\n", boot_version >> 4, boot_version & 0xf );
-    
-    ans = boot_read ( BOOT_TEST_READ_ADDR, test_read, 4 );
-    ans = boot_erase_ext ( BOOT_EXT_ERASE_WHOLE, NULL );
-    close_uart();
-    return 1;
+    return ERR_UNKNOWN_ANSWER;
 }

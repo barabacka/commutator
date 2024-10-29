@@ -5,7 +5,7 @@ project(flasher
 )
 
 set ( VERSION_MAJOR 0 )
-set ( VERSION_MINOR 7 )
+set ( VERSION_MINOR 8 )
 set ( VERSION_PATCH 0 )
 
 if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/ver.h )
@@ -28,6 +28,7 @@ enable_language(C)
 
 set ( SOURCE
 		flasher.c
+		fsm.c
 		common.c
 		bootloader.c
 		uart.c

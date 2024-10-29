@@ -9,23 +9,6 @@
 #define BOOT_TEST_READ_ADDR         0x8000000
 
 typedef enum{
-    ERR_MIN = -11,
-    ERR_OVERFLOW,
-    ERR_TIMEOUT,
-    ERR_RDP_ACTIVE,
-    ERR_WRONG_SIZE,
-    ERR_WRONG_ADDR,
-    ERR_UNKNOWN_ANSWER,
-    ERR_CMD_NOT_ALLOW,
-    ERR_NACK,
-    ERR_TX_FAIL,
-    ERR_RX_FAIL,
-    ERROR,
-    OK    
-}BL_ERRORS_T;
-static_assert(ERROR == 0, "Please Correct ERR_MIN value!");
-
-typedef enum{
     CMD_RESTRICTED = 0,
     CMD_ALLOWED,
     CMD_PERMISSION_MAX
