@@ -5,10 +5,10 @@ project(flasher
 )
 
 set ( VERSION_MAJOR 0 )
-set ( VERSION_MINOR 8 )
+set ( VERSION_MINOR 9 )
 set ( VERSION_PATCH 0 )
 
-if (EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/ver.h )
+if ( EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/ver.h )
 	file ( READ ${CMAKE_CURRENT_SOURCE_DIR}/ver.h ver )
 	string ( REGEX MATCH "([0-9]+)\\.([0-9]+)\\.([0-9]+)" _ ${ver} )
 	set ( VERSION_MAJOR_OLD ${CMAKE_MATCH_1} )
@@ -28,7 +28,6 @@ enable_language(C)
 
 set ( SOURCE
 		flasher.c
-		fsm.c
 		common.c
 		bootloader.c
 		uart.c
@@ -39,6 +38,7 @@ set ( HEADER
 		uart.h
 		bootloader_def.h
 		bootloader_opt.h
+		stm32.h
 	)
 
 add_executable(${PROJECT_NAME} ${SOURCE})

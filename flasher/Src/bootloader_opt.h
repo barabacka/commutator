@@ -24,6 +24,8 @@
 #define BOOT_CMD_READOUT_PROTECT    0x82 
 #define BOOT_CMD_READOUT_UNPROTECT  0x92 
 
+#define BOOT_CMD_SET_MIN            10
+
 typedef enum{
     BOOT_CMD_GET_IDX= 0,
     BOOT_CMD_GET_VERSION_IDX,
@@ -47,8 +49,3 @@ typedef struct{
     uint8_t ver;
     uint8_t cmd[0];                 
 }BOOT_CMD_GET_ANSWER_T;
-
-
-
-
-

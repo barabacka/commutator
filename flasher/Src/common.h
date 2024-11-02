@@ -15,7 +15,7 @@
 #endif
 
 typedef enum{
-    ERR_MIN = -15,
+    ERR_MIN = -16,
     ERR_OVERFLOW,
     ERR_TIMEOUT,
     ERR_RDP_ACTIVE,
@@ -25,6 +25,7 @@ typedef enum{
     ERR_WRONG_ARGUMENT,
     ERR_OPEN_UART,
     ERR_WRONG_FLASH_FILE,
+    ERR_USUPPORTED_VERSION,
     ERR_UNKNOWN_ANSWER,
     ERR_CMD_NOT_ALLOW,
     ERR_NACK,
@@ -35,16 +36,16 @@ typedef enum{
 }ERRORS_T;
 static_assert(ERROR == 0, "Please check ERR_MIN value!");
 
+typedef struct{
+  uint8_t ver;
+  uint8_t core_id;
+  uint8_t cmdset_num;
+}BL_MCU_INFO_T;
+
 //- from common.c
 void hex ( uint8_t * dt, int size );
 
 //- from bootloader.c
 int bl_open_uart ( char * port );
 void bl_close_uart ( void );
-int bl_connect ( void );
-
-//- from fsm.c
-int fsm ( int argc, char** argv );
-
-
-
+int bl_connect ( BL_MCU_INFO_T * mcu );

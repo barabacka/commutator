@@ -34,8 +34,6 @@ static BOOT_CMD_ALLOW_T cmd_set[BOOT_CMD_IDX_MAX]={
     { CMD_RESTRICTED,   BOOT_CMD_READOUT_UNPROTECT  }
 };
 
-static uint8_t boot_version = 0;
-
 static uint8_t rx_buff[BUFF_SIZE];
 static uint8_t tx_buff[BUFF_SIZE];
 
@@ -164,7 +162,7 @@ static int send_addr ( uint32_t addr )
 //-----------------------------------------------
 //-----------------------------------------------
 //-----------------------------------------------
-static int boot_get ( )
+static int boot_get ( BL_MCU_INFO_T * mcu )
 {
     int retval, cmd_set_idx, ans_cmd_idx;
     BOOT_CMD_GET_ANSWER_T * ans = ( BOOT_CMD_GET_ANSWER_T * )rx_buff;
@@ -177,31 +175,36 @@ static int boot_get ( )
 #endif
         if ( retval < 3 || 
              !ans->ver || 
-             ans->n != ( retval - 2 ) ){
-            retval =  ERR_UNKNOWN_ANSWER;
+             ans->n != ( retval - 2 ) ) {
+            retval = ERR_UNKNOWN_ANSWER;
             break;
         }
     
-        boot_version = ans->ver;
+        mcu->ver = ans->ver;
         //clear cmd set
         for ( cmd_set_idx = ( BOOT_CMD_GET_IDX + 1); cmd_set_idx < BOOT_CMD_IDX_MAX; cmd_set_idx++ )
             cmd_set[cmd_set_idx].allow = CMD_RESTRICTED;
         
+        mcu->cmdset_num = 0;
+
         //regitrate commands set
         for ( ans_cmd_idx = 0; ans_cmd_idx < ans->n; ans_cmd_idx++ )
             for ( cmd_set_idx = ( BOOT_CMD_GET_IDX + 1); cmd_set_idx < BOOT_CMD_IDX_MAX; cmd_set_idx++ )
                 if ( cmd_set[cmd_set_idx].cmd == ans->cmd[ans_cmd_idx] )
                 {
                     cmd_set[cmd_set_idx].allow = CMD_ALLOWED;
-                    retval ++;
+                    mcu->cmdset_num ++;
                     break;
                 }
+
+        retval = mcu->cmdset_num >= BOOT_CMD_SET_MIN ? OK : ERR_USUPPORTED_VERSION;
+    
     } while ( 0 );
     
     return retval;
 }
 //-----------------------------------------------
-static int boot_get_version ( )
+static int boot_get_version ( BL_MCU_INFO_T * mcu )
 {
     int retval;
 
@@ -211,14 +214,17 @@ static int boot_get_version ( )
 #ifdef DEBUG        
         hex ( rx_buff, retval );
 #endif
-        retval = rx_buff[0];
+        if ( !mcu->ver )
+            mcu->ver = rx_buff[0];
+        
+        retval = mcu->ver == rx_buff[0] ? OK : ERR_USUPPORTED_VERSION;
 
     } while ( 0 );
     
     return retval;
 }
 //-----------------------------------------------
-static int boot_get_id ( )
+static int boot_get_id ( BL_MCU_INFO_T * mcu )
 {
     int retval;
 
@@ -231,11 +237,12 @@ static int boot_get_id ( )
         if ( retval != 3 || 
              rx_buff[0] != 1 ||
              rx_buff[1] != 4 ){
-            retval =  ERR_UNKNOWN_ANSWER;
+            retval =  ERR_USUPPORTED_VERSION;
             break;
         }
 
-        retval = rx_buff[2];
+        mcu->core_id = rx_buff[2];
+        retval = OK;
 
     } while ( 0 );
     
@@ -338,23 +345,23 @@ static int bl_erase_flash ( )
 }
 //-----------------------------------------------
 //-----------------------------------------------
-static int bl_connecting ( )
+static int bl_connecting ( BL_MCU_INFO_T * mcu  )
 {
     int retval = 0;
-    uint8_t chip_id = 0;
     do{
+        memset ( mcu, 0, sizeof(BL_MCU_INFO_T) );
         flush_rx ( 1 );
-        if ( !boot_get ( ) )
-            break;
-        if ( boot_version != boot_get_version ( ) )
-            break;
-        chip_id = boot_get_id ( );
-        if ( !chip_id )
+        
+        if ( ( retval = boot_get ( mcu ) ) < OK )
             break;
 
-        retval = chip_id;
+        if ( ( retval = boot_get_version ( mcu ) ) < OK )
+            break;
+
+        retval = boot_get_id ( mcu );
 
     } while ( 0 );
+
     return retval;
 }
 //-----------------------------------------------
@@ -372,21 +379,15 @@ void bl_close_uart ( void )
     close_uart ( );
 }
 //-----------------------------------------------
-int bl_connect ( void )
+int bl_connect ( BL_MCU_INFO_T * mcu )
 {
-    uint8_t chip_id = 0, test_read[4];
     int ans;
  
     tx_byte ( BOOT_CMD_HELLO );
-    if ( get_ack ( 1 ) == OK ){
-        chip_id = bl_connecting ( );
-        if ( chip_id ){
-            msg ( "\tDetected STM32 chip with ID 0x%.2X.\n", chip_id );
-            msg ( "\tBootloader v%d.%d\n", boot_version >> 4, boot_version & 0xf );
+    
+    if ( get_ack ( 1 ) == OK )
+        return bl_connecting ( mcu );
 
-            return OK;
-        }    
-    }
     delay ( BOOT_HELLO_TICK );
 
     return ERR_UNKNOWN_ANSWER;
