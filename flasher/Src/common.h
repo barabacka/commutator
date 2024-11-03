@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <assert.h>
 
@@ -49,3 +51,5 @@ void hex ( uint8_t * dt, int size );
 int bl_open_uart ( char * port );
 void bl_close_uart ( void );
 int bl_connect ( BL_MCU_INFO_T * mcu );
+int bl_rdp_unblock ( void );
+int bl_read ( uint32_t addr, uint8_t * data, uint8_t size );

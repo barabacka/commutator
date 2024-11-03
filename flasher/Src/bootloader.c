@@ -38,7 +38,7 @@ static uint8_t rx_buff[BUFF_SIZE];
 static uint8_t tx_buff[BUFF_SIZE];
 
 //-----------------------------------------------
-__attribute__ ( ( __always_inline__) ) void delay ( useconds_t usec )
+static inline void delay ( useconds_t usec )
 {
     if ( usec ) 
         usleep ( usec );
@@ -249,6 +249,26 @@ static int boot_get_id ( BL_MCU_INFO_T * mcu )
     return retval;
 }
 //-----------------------------------------------
+static int boot_readout_unprotect ( void )
+{
+    int retval;
+    uint8_t ans;
+
+    do{
+        SEND_CMD ( BOOT_CMD_READOUT_UNPROTECT_IDX );
+        CHECK_ANSWER ( ERR_UNKNOWN_ANSWER, "BOOT_RDP_UNPROTECT_CMD::Fail.\n" );
+        //TODO: add timeout 
+        do{
+            retval = get_ack ( BOOT_RX_DELAY );
+            if ( retval != ERR_RX_FAIL )
+                break;
+        }
+        while ( 1 );
+    }while ( 0 );
+
+    return retval;
+}
+//-----------------------------------------------
 static int boot_read ( uint32_t addr, uint8_t * data, uint8_t size )
 {
     int retval = ERR_WRONG_SIZE;
@@ -344,8 +364,7 @@ static int bl_erase_flash ( )
     return retval;
 }
 //-----------------------------------------------
-//-----------------------------------------------
-static int bl_connecting ( BL_MCU_INFO_T * mcu  )
+static int boot_read_info ( BL_MCU_INFO_T * mcu  )
 {
     int retval = 0;
     do{
@@ -364,6 +383,7 @@ static int bl_connecting ( BL_MCU_INFO_T * mcu  )
 
     return retval;
 }
+//-----------------------------------------------
 //-----------------------------------------------
 //-----------------------------------------------
 //-----------------------------------------------
@@ -386,9 +406,19 @@ int bl_connect ( BL_MCU_INFO_T * mcu )
     tx_byte ( BOOT_CMD_HELLO );
     
     if ( get_ack ( 1 ) == OK )
-        return bl_connecting ( mcu );
+        return boot_read_info ( mcu );
 
     delay ( BOOT_HELLO_TICK );
 
     return ERR_UNKNOWN_ANSWER;
+}
+//-----------------------------------------------
+int bl_rdp_unblock ( void )
+{
+    return boot_readout_unprotect ();
+}
+//-----------------------------------------------
+int bl_read ( uint32_t addr, uint8_t * data, uint8_t size )
+{
+    return boot_read ( addr, data, size );
 }

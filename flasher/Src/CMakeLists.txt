@@ -4,9 +4,9 @@ project(flasher
     	LANGUAGES C
 )
 
-set ( VERSION_MAJOR 0 )
-set ( VERSION_MINOR 9 )
-set ( VERSION_PATCH 0 )
+set ( VERSION_MAJOR  0 )
+set ( VERSION_MINOR 10 )
+set ( VERSION_PATCH  0 )
 
 if ( EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/ver.h )
 	file ( READ ${CMAKE_CURRENT_SOURCE_DIR}/ver.h ver )
