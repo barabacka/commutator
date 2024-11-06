@@ -53,3 +53,5 @@ void bl_close_uart ( void );
 int bl_connect ( BL_MCU_INFO_T * mcu );
 int bl_rdp_unblock ( void );
 int bl_read ( uint32_t addr, uint8_t * data, uint8_t size );
+int bl_erase_full ( void );
+int bl_erase_ext ( uint16_t pg_num, uint16_t * pages );

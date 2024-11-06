@@ -292,7 +292,11 @@ static int boot_read ( uint32_t addr, uint8_t * data, uint8_t size )
         CHECK_ANSWER ( ERR_WRONG_SIZE, "BOOT_READ_CMD::Fail: wrong data size.\n" );
 
         retval = rx_uart ( data, size + 1 );
+
+#ifdef DEBUG        
         hex ( data, retval );
+#endif
+
     } while ( 0 );
     
     return retval;
@@ -303,7 +307,7 @@ static int boot_erase_ext ( uint16_t pages_num, uint16_t * pages )
     int retval, cnt = 0, num;
     uint8_t ans, crc;
     do{
-        SEND_CMD ( BOOT_CMD_EXTENDED_ERASE_IDX );   //ERR_CMD_NOT_ALLOW
+        SEND_CMD ( BOOT_CMD_EXTENDED_ERASE_IDX );   
         CHECK_ANSWER ( ERR_RDP_ACTIVE, "BOOT_EXT_ERASE_CMD::Fail: RDP is active.\n" ); 
         num = pages_num - 1;
         tx_buff[cnt++] = num >> 8;
@@ -317,9 +321,6 @@ static int boot_erase_ext ( uint16_t pages_num, uint16_t * pages )
                 crc ^= tx_buff[cnt++];
                 pages++;
             }
-        }
-        else{
-            num = BOOT_ERASE_PAGES;    //TODO: max num of pages
         }
         
         tx_buff[cnt++] = crc;
@@ -341,26 +342,6 @@ static int boot_erase_ext ( uint16_t pages_num, uint16_t * pages )
         
     } while ( 0 );
     
-    return retval;
-}
-//-----------------------------------------------
-static int bl_erase_flash ( )
-{
-    int retval = ERROR, i;
-    uint16_t * pages = NULL;
-    do{
-        if ( cmd_set[BOOT_CMD_EXTENDED_ERASE_IDX].allow == CMD_ALLOWED ){
-            retval = boot_erase_ext ( BOOT_ERASE_WHOLE, NULL );
-            if ( retval == OK )
-                break;
-            pages = ( uint16_t * ) malloc ( BOOT_ERASE_PAGES * 2 );
-            for ( i=0; i < BOOT_ERASE_PAGES; i++ )
-                pages[i] = i;
-            retval = boot_erase_ext ( BOOT_ERASE_PAGES, pages );
-            free ( pages );
-        }
-    }while ( 0 );
-
     return retval;
 }
 //-----------------------------------------------
@@ -421,4 +402,14 @@ int bl_rdp_unblock ( void )
 int bl_read ( uint32_t addr, uint8_t * data, uint8_t size )
 {
     return boot_read ( addr, data, size );
+}
+//-----------------------------------------------
+int bl_erase_full ( void )
+{
+    return boot_erase_ext ( BOOT_ERASE_WHOLE, NULL );
+}
+//-----------------------------------------------
+int bl_erase_ext ( uint16_t pg_num, uint16_t * pages )
+{
+    return boot_erase_ext ( pg_num, pages );
 }

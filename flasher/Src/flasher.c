@@ -9,6 +9,8 @@ typedef enum{
     FSM_CONNECT,
     FSM_TEST_RDP,
     FSM_UNLOCK_RDP,
+    FSM_ERASE_FULL,    
+    FSM_ERASE_EX,
     FSM_FAIL,
     FSM_EXIT,
     FSM_CLOSE_PORT,
@@ -112,7 +114,7 @@ int main ( int argc, char** argv )
 #define FSM_GO(s)  {state=s; break;}
 
     FSM_STATES_T    state = FSM_IDLE;
-    int             res, i, cnt;
+    int             res, i, cnt, num;
     int             working = 1;
     MCU_INFO_T      mcu;
     void *          data = NULL;
@@ -176,14 +178,12 @@ int main ( int argc, char** argv )
                 res = bl_read ( mcu.core->mem->regs[i].start, (uint8_t*)data, 4 );
                 free ( data );
                 if ( res < OK ){
-                    if ( res == ERR_RDP_ACTIVE )
-                        FSM_GO ( FSM_UNLOCK_RDP );
-                    FSM_GO ( answer_error ( res, FSM_FAIL ) );
+                    FSM_SET ( res == ERR_RDP_ACTIVE ? FSM_UNLOCK_RDP : answer_error ( res, FSM_FAIL ) );
+                }else{
+                    FSM_SET ( FSM_ERASE_FULL );
                 }
-                msg("reading OK\n");
-                FSM_GO ( FSM_EXIT );
                 break;
-
+            
             case FSM_UNLOCK_RDP:
                 if ( cnt < 2 ){
                     res = bl_rdp_unblock ();
@@ -197,6 +197,47 @@ int main ( int argc, char** argv )
                 FSM_GO ( answer_error ( res, FSM_FAIL ) );
                 break;
                 
+            case FSM_ERASE_FULL:
+                msg ( "Erase whole flash..");
+                res = bl_erase_full ( );
+                if ( res >= OK ){
+                    msg ( "OK\n" );
+                    FSM_SET ( FSM_EXIT );
+                }else{
+                    if ( res == ERR_CMD_NOT_ALLOW || res == ERR_WRONG_SIZE ){
+                        msg ( "." );
+                        FSM_SET ( FSM_ERASE_EX );
+                    }else{
+                        FSM_SET ( FSM_FAIL );
+                    }
+                }
+                break;
+
+            case FSM_ERASE_EX:
+                i = get_mem_index ( &mcu, MEM_PAGES );
+                if ( i >= 0 && 
+                     mcu.core->mem->regs[i].pg_num > 0){
+                    
+                    num = mcu.core->mem->regs[i].pg_num;
+                    data = malloc ( 2 * num );
+                    assert ( data );
+                    
+                    for ( i = 0; i < num; i++ )
+                        (( uint16_t * )data )[i] = i;
+                                            
+                    res = bl_erase_ext ( num, ( uint16_t * )data );
+                    free ( data );
+                    
+                    if ( res >= OK ){
+                        msg ( "OK\n" );
+                        FSM_GO ( FSM_EXIT );
+                    }
+                }else
+                    res = ERR_USUPPORTED_VERSION;
+                msg ( "Fail\n" );
+                FSM_SET ( FSM_FAIL );
+                break;
+
             case FSM_FAIL:
                 msg ( "Fail (%d)\n", res );
                 FSM_NEXT
