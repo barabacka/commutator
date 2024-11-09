@@ -302,9 +302,62 @@ static int boot_read ( uint32_t addr, uint8_t * data, uint8_t size )
     return retval;
 }
 //-----------------------------------------------
+static int boot_write ( uint32_t addr, uint8_t * data, uint16_t size )
+{
+    int retval = ERR_WRONG_SIZE;
+    uint8_t ans;
+
+    assert ( data );
+
+    do{
+        if ( !size )
+            break;
+        SEND_CMD ( BOOT_CMD_WRITE_MEMORY_IDX );
+        CHECK_ANSWER ( ERR_RDP_ACTIVE, "BOOT_WRITE_CMD::Fail: RDP is active.\n" );
+
+        if ( ( retval = send_addr ( addr ) ) != 4 )
+            break;
+        CHECK_ANSWER ( ERR_WRONG_ADDR, "BOOT_WRITE_CMD::Fail: wrong address.\n" );
+
+        tx_buff[0] = size - 1;
+        memcpy ( tx_buff + 1, data, size );
+        size++;
+
+        retval = send_n ( tx_buff, size, 0 );
+        if ( retval != size ){
+            if ( retval >= OK )
+                retval = ERR_WRITE;
+            break;
+        }
+        CHECK_ANSWER ( ERR_WRITE, "BOOT_WRITE_CMD::Fail.\n" );
+    } while ( 0 );
+    
+    return retval;
+}
+//-----------------------------------------------
+static int boot_write_unprotect ( void )
+{
+    int retval;
+    uint8_t ans;
+
+    do{
+        SEND_CMD ( BOOT_CMD_WRITE_UNPROTECT_IDX );
+        CHECK_ANSWER ( ERR_RDP_ACTIVE, "BOOT_WR_UNPROTECT_CMD::Fail.\n" );
+        //TODO: add timeout 
+        do{
+            retval = get_ack ( BOOT_RX_DELAY );
+            if ( retval != ERR_RX_FAIL )
+                break;
+        }
+        while ( 1 );
+    }while ( 0 );
+
+    return retval;
+}
+//-----------------------------------------------
 static int boot_erase_ext ( uint16_t pages_num, uint16_t * pages )
 {
-    int retval, cnt = 0, num;
+    int retval = OK, cnt = 0, num;
     uint8_t ans, crc;
     do{
         SEND_CMD ( BOOT_CMD_EXTENDED_ERASE_IDX );   
@@ -314,21 +367,43 @@ static int boot_erase_ext ( uint16_t pages_num, uint16_t * pages )
         tx_buff[cnt++] = num & 0xFF;
         crc = tx_buff[0] ^ tx_buff[1];
         if ( ( pages_num >> 4 ) != 0xFFF ){
-            while ( pages_num-- ){
-                tx_buff[cnt] = *pages >> 8;
+            //2 bytes for each page, so x2 
+            pages_num <<= 1;
+            while ( pages_num ){
+                if ( ( pages_num & 1 ) == 0 )
+                    tx_buff[cnt] = *pages >> 8;
+                else{
+                    tx_buff[cnt] = *pages & 0xFF;
+                    pages++;
+                }
                 crc ^= tx_buff[cnt++];
-                tx_buff[cnt] = *pages & 0xFF;
-                crc ^= tx_buff[cnt++];
-                pages++;
+                pages_num--;
+                //check for buffer overflow
+                if ( cnt >= BUFF_SIZE ){
+#ifdef DEBUG        
+                    hex ( tx_buff, cnt );
+#endif
+                    if ( tx_uart ( tx_buff, cnt ) != cnt ){
+                        retval = ERR_TX_FAIL;
+                        break;
+                    }
+                    cnt = 0;
+                }
+
             }
         }
+
+        if ( retval < OK )
+            break;
         
         tx_buff[cnt++] = crc;
 #ifdef DEBUG        
         hex ( tx_buff, cnt );
 #endif
-        if ( ( retval = tx_uart ( tx_buff, cnt ) ) != cnt )
+        if ( tx_uart ( tx_buff, cnt ) != cnt ){
+            retval = ERR_TX_FAIL;
             break;
+        }
 
         do{
             if ( ( retval = get_ack ( BOOT_ERASE_PAGE_TO ) ) == OK )
@@ -402,6 +477,16 @@ int bl_rdp_unblock ( void )
 int bl_read ( uint32_t addr, uint8_t * data, uint8_t size )
 {
     return boot_read ( addr, data, size );
+}
+//-----------------------------------------------
+int bl_write ( uint32_t addr, uint8_t * data, uint16_t size )
+{
+    return boot_write ( addr, data, size );
+}
+//-----------------------------------------------
+int bl_er_wr_unblock ( void )
+{
+    return boot_write_unprotect ( );
 }
 //-----------------------------------------------
 int bl_erase_full ( void )

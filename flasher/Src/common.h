@@ -9,7 +9,7 @@
 
 //#define DEBUG 1
 
-#define msg(...)    printf(__VA_ARGS__)
+#define msg(...)    {printf(__VA_ARGS__); fflush(stdout);}
 #ifdef DEBUG
   #define dbg(...)    printf(__VA_ARGS__)
 #else
@@ -17,7 +17,8 @@
 #endif
 
 typedef enum{
-    ERR_MIN = -16,
+    ERR_MIN = -17,
+    ERR_WRITE,
     ERR_OVERFLOW,
     ERR_TIMEOUT,
     ERR_RDP_ACTIVE,
@@ -53,5 +54,7 @@ void bl_close_uart ( void );
 int bl_connect ( BL_MCU_INFO_T * mcu );
 int bl_rdp_unblock ( void );
 int bl_read ( uint32_t addr, uint8_t * data, uint8_t size );
+int bl_write ( uint32_t addr, uint8_t * data, uint16_t size );
+int bl_er_wr_unblock ( void );
 int bl_erase_full ( void );
 int bl_erase_ext ( uint16_t pg_num, uint16_t * pages );
