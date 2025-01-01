@@ -1,11 +1,14 @@
 #include "common.h"
 #include "ver.h"
 #include "stm32.h"
+#include <errno.h>
 
 typedef enum{
     FSM_IDLE = 0,
     FSM_CHECK_PARAM,
     FSM_OPEN_PORT,
+    FSM_GPIO_INIT,
+    FSM_GPIO_RESET,
     FSM_CONNECT,
     FSM_TEST_RDP,
     FSM_UNLOCK_RDP,
@@ -33,6 +36,11 @@ typedef enum{
     FFL_CHECK = 0,
     FFL_READ,
 }T_OPEN_FILE_MODE;
+
+typedef enum{
+    STM_BOOT_DISABLE = 0,
+    STM_BOOT_ENABLE
+}T_STM_BOOT_MODE;
 
 //-----------------------------------------------
 static unsigned char * ffl_open ( char * file_name, int * fsize, T_OPEN_FILE_MODE mode )
@@ -77,13 +85,36 @@ static unsigned char * ffl_open ( char * file_name, int * fsize, T_OPEN_FILE_MOD
     return dt;
 }
 //-----------------------------------------------
-static int check_arguments ( int argc, char** argv )
+static uint8_t get_gpio_num ( char * str_pin )
+{
+    uint8_t retval = 0;
+    char  * endptr;
+    long    value;
+
+    do{
+        errno = 0;
+        value = strtol ( str_pin, &endptr, 10 );
+        if (errno == ERANGE)
+            break;
+        if (*endptr != '\0')
+            break;
+        if ( value < 1 || value > 27 )
+            break;
+        retval = ( uint8_t )value; 
+
+    }while ( 0 );
+    return retval;
+}
+//-----------------------------------------------
+static int check_arguments ( int argc, char** argv, GPIO_PARAM_T * gpio )
 {
     int retval;
     FILE * file;
 
     do{
-        if ( argc != 3 ){
+        if ( gpio )
+            gpio->use = 0;
+        if ( argc != 3 && argc != 5 ){
             retval = ERR_WRONG_ARGUMENTS_NUMBER;
             break; 
         }
@@ -97,6 +128,14 @@ static int check_arguments ( int argc, char** argv )
 
         ffl_open ( argv[2], &retval, FFL_CHECK );
 
+        if ( retval <= ERROR || argc == 3 || gpio == NULL)
+            break;
+        
+        gpio->rst = get_gpio_num ( argv[3] );
+        gpio->boot0 = get_gpio_num ( argv[4] );
+
+        gpio->use = ( gpio->rst != 0 && gpio->boot0 != 0 ) ? 1 : 0;
+
     }while ( 0 );
     
     if ( retval > ERROR )
@@ -104,7 +143,7 @@ static int check_arguments ( int argc, char** argv )
     else{
         msg ("Wrong argument! (%d)\n", retval );
         msg ("Usage: \n");
-        msg ("\t ./flasher \"/dev/uart\" \"FILE_TO_FLASH.bin\"\n");
+        msg ("\t ./flasher \"/dev/uart\" \"FILE_TO_FLASH.bin\" <Opt: Reset PIN> <Opt: BOOT0 PIN>\n");
     }
 
     return retval;
@@ -163,6 +202,7 @@ int main ( int argc, char** argv )
     int             working = 1;
     MCU_INFO_T      mcu;
     void *          data = NULL;
+    GPIO_PARAM_T    gpio = {0};
 
     mcu.rd_allow = 0;
     mcu.wr_allow = 0;
@@ -175,17 +215,27 @@ int main ( int argc, char** argv )
                 FSM_NEXT
             
             case FSM_CHECK_PARAM:
-                res = check_arguments ( argc, argv );
+                res = check_arguments ( argc, argv, &gpio );
                 if ( res < OK )
                     FSM_GO ( FSM_DONE );
                 FSM_NEXT
-            
             case FSM_OPEN_PORT:
                 res = bl_open_uart ( argv[1] );
                 if ( res < OK )
                     FSM_GO ( FSM_DONE );
                 cnt = 0;
                 msg ( "\tWaiting for connection...\n" );
+                FSM_NEXT
+
+            case FSM_GPIO_INIT:
+                gpio_init ( &gpio );
+                FSM_NEXT
+
+            case FSM_GPIO_RESET:
+                if ( gpio.use ){
+                    msg ( "\tHW reset" );
+                    gpio_reset ( &gpio, STM_BOOT_ENABLE ); 
+                }
                 FSM_NEXT
 
             case FSM_CONNECT:
@@ -345,6 +395,9 @@ int main ( int argc, char** argv )
                 msg ( "OK\n" );
                
                 free ( data );
+
+                gpio_reset ( &gpio, STM_BOOT_DISABLE ); 
+                
                 FSM_GO (FSM_EXIT)
 
             case FSM_FAIL_WRITE:
@@ -361,6 +414,7 @@ int main ( int argc, char** argv )
 
             case FSM_CLOSE_PORT:
                 bl_close_uart ( );
+                gpio_finish ( &gpio );
                 FSM_NEXT
 
             case FSM_DONE:

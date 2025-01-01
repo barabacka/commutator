@@ -5,7 +5,7 @@ project(flasher
 )
 
 set ( VERSION_MAJOR  0 )
-set ( VERSION_MINOR 14 )
+set ( VERSION_MINOR 15 )
 set ( VERSION_PATCH  0 )
 
 if ( EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/ver.h )
@@ -31,6 +31,7 @@ set ( SOURCE
 		common.c
 		bootloader.c
 		uart.c
+		gpio.c
 	)
 
 set ( HEADER
