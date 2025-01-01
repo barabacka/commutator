@@ -304,8 +304,8 @@ static int boot_read ( uint32_t addr, uint8_t * data, uint8_t size )
 //-----------------------------------------------
 static int boot_write ( uint32_t addr, uint8_t * data, uint16_t size )
 {
-    int retval = ERR_WRONG_SIZE;
-    uint8_t ans;
+    int retval = ERR_WRONG_SIZE, cnt;
+    uint8_t ans, crc;
 
     assert ( data );
 
@@ -315,20 +315,43 @@ static int boot_write ( uint32_t addr, uint8_t * data, uint16_t size )
         SEND_CMD ( BOOT_CMD_WRITE_MEMORY_IDX );
         CHECK_ANSWER ( ERR_RDP_ACTIVE, "BOOT_WRITE_CMD::Fail: RDP is active.\n" );
 
-        if ( ( retval = send_addr ( addr ) ) != 4 )
-            break;
-        CHECK_ANSWER ( ERR_WRONG_ADDR, "BOOT_WRITE_CMD::Fail: wrong address.\n" );
-
-        tx_buff[0] = size - 1;
-        memcpy ( tx_buff + 1, data, size );
-        size++;
-
-        retval = send_n ( tx_buff, size, 0 );
-        if ( retval != size ){
-            if ( retval >= OK )
-                retval = ERR_WRITE;
+        if ( send_addr ( addr ) != 4 ){
+            retval = ERR_TX_FAIL;
             break;
         }
+        CHECK_ANSWER ( ERR_WRONG_ADDR, "BOOT_WRITE_CMD::Fail: wrong address.\n" );
+
+        cnt = 0; 
+        tx_buff[cnt] = size - 1;
+        crc = tx_buff[cnt++];
+        while ( size ){
+            tx_buff[cnt++] = *data;
+            crc ^= *data;
+            data++;
+            size--;
+            if ( cnt >= BUFF_SIZE ){
+#ifdef DEBUG        
+                hex ( tx_buff, cnt );
+#endif
+                if ( tx_uart ( tx_buff, cnt ) != cnt ){
+                    retval = ERR_TX_FAIL;
+                    break;
+                }
+                cnt = 0;
+            }
+        }
+        if ( retval < OK )
+            break;
+        
+        tx_buff[cnt++] = crc;
+#ifdef DEBUG        
+        hex ( tx_buff, cnt );
+#endif
+        if ( tx_uart ( tx_buff, cnt ) != cnt ){
+            retval = ERR_TX_FAIL;
+            break;
+        }
+
         CHECK_ANSWER ( ERR_WRITE, "BOOT_WRITE_CMD::Fail.\n" );
     } while ( 0 );
     

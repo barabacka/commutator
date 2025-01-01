@@ -329,7 +329,7 @@ int main ( int argc, char** argv )
 
                 while ( cnt < dt_size )
                 {
-                    if( ( dt_size - cnt ) < num )
+                    if( ( cnt + num ) > dt_size )
                         num = dt_size - cnt;
                     res = bl_write ( mcu.core->mem->regs[i].start + cnt, ( ( uint8_t * ) data ) + cnt, num );
                     cnt += num;

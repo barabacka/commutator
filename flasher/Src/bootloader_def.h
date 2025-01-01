@@ -1,6 +1,6 @@
 #pragma once
 
-#define BUFF_SIZE                   0x200
+#define BUFF_SIZE                   0x100
 #define BOOT_UART_SPEED             115200
 #define BOOT_HELLO_TICK             10000
 #define BOOT_RX_DELAY               0
