@@ -1,0 +1,13 @@
+#/.gitignore
+/other
+
+/flasher/Dst
+/flasher/Src/ver.h
+/flasher/Src/.vscode
+/flasher/*.bin
+/flasher/*.sh
+
+/stm/*
+!/stm/Core
+!/stm/commutator_hal.ioc
+!/stm/copy fw.cmd
