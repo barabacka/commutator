@@ -9,7 +9,7 @@
 #define INC_DEFS_H_
 
 #define VERSION_MAJOR	1
-#define VERSION_MINOR	0
+#define VERSION_MINOR	1
 #define VERSION_PATCH	0
 
 typedef enum{
@@ -19,6 +19,12 @@ typedef enum{
 
 #define ITSRC(a)	(1<<a)
 #define ITSRC_URX	ITSRC(IS_URX)
+
+#define CMD_TV_ON		'T'
+#define CMD_MUSIC_ON	'M'
+#define CMD_OFF			'O'
+#define CMD_GET_STATE	'G'
+#define CMD_SMALL(L)	(L +('a'-'A'))
 
 
 typedef enum{

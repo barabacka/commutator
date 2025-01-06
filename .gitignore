@@ -1,4 +1,4 @@
-#/.gitignore
+/.gitignore
 /other
 
 /flasher/Dst
@@ -7,7 +7,6 @@
 /flasher/*.bin
 /flasher/*.sh
 
-/stm/*
+/stm
 !/stm/Core
 !/stm/commutator_hal.ioc
-!/stm/copy fw.cmd

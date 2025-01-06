@@ -125,5 +125,11 @@ HAL_StatusTypeDef urx_it ( uint8_t *pData, uint16_t Size )
 {
 	return HAL_UART_Receive_IT(&USE_UART, pData, Size);
 }
+//-----------------------------------------------
+HAL_StatusTypeDef utx( uint8_t *pData, uint16_t Size )
+{
+	return HAL_UART_Transmit(&USE_UART, pData, Size, ( ( Size + 9 )/10 ) );
+}
+
 
 /* USER CODE END 1 */

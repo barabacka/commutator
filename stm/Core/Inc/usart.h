@@ -43,6 +43,7 @@ void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN Prototypes */
 
 HAL_StatusTypeDef urx_it ( uint8_t *pData, uint16_t Size );
+HAL_StatusTypeDef utx( uint8_t *pData, uint16_t Size );
 
 /* USER CODE END Prototypes */
 

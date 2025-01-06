@@ -67,7 +67,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+  static uint8_t cur_state = CMD_OFF;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -106,19 +106,26 @@ int main(void)
 	  if ( it_state & ITSRC_URX ){
 		  switch ( rx[0] )
 		  {
-		  	  case 'T':
-		  	  case 't':
+		  	  case CMD_TV_ON:
+		  	  case CMD_SMALL(CMD_TV_ON):
 		  		  switch_it ( TURN_MUSIC_OFF );
 		  		  switch_it ( TURN_TV_ON );
+		  		  cur_state  = CMD_TV_ON;
 		  		  break;
-		  	  case 'M':
-		  	  case 'm':
+		  	  case CMD_MUSIC_ON:
+		  	  case CMD_SMALL(CMD_MUSIC_ON):
 		  		  switch_it ( TURN_TV_OFF );
 		  		  switch_it ( TURN_MUSIC_ON );
+		  		  cur_state  = CMD_MUSIC_ON;
 		  		  break;
-		  	  case 'O':
-		  	  case 'o':
+		  	  case CMD_OFF:
+		  	  case CMD_SMALL(CMD_OFF):
 		  		  switch_it ( TURN_ALL_OFF );
+		  		  cur_state  = CMD_OFF;
+		  		  break;
+		  	  case CMD_GET_STATE:
+		  	  case CMD_SMALL(CMD_GET_STATE):
+		  		  utx( &cur_state, 1 );
 		  		  break;
 		  	  default:
 				  break;
