@@ -1,0 +1,13 @@
+initramfs volumio.initrd
+dtoverlay=lirc-rpi,gpio_in_pin=26,gpio_in_pull=up
+gpu_mem=32
+max_usb_current=1
+dtparam=audio=on
+audio_pwm_mode=2
+dtparam=i2c_arm=on
+disable_splash=1
+hdmi_force_hotplug=1
+
+#### Volumio i2s setting below: do not alter ####
+dtoverlay=aoide-dacii
+
