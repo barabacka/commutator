@@ -3,6 +3,7 @@
 echo "t - for turn on TV"
 echo "m - for turn on MUSIC"
 echo "o - for turn OFF everything"
+echo "s - for get status"
 echo "q - for exit"
 
 stty -F /dev/serial0 115200 cs8 -cstopb -parenb
@@ -18,6 +19,10 @@ do
 	    echo "MUSIC"
 	    printf '%c' $'M' > /dev/serial0
 	    ;;
+	"s")
+	    echo "Status"
+	    printf '%c' $'G' > /dev/serial0
+	    ;;
 	"q")
 	    echo "exit"
 	    exit 0
@@ -28,4 +33,5 @@ do
 	    ;;
     esac
 done
+
 
